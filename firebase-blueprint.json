@@ -1,0 +1,70 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Astronaut crew or flight surgeon profile with role and mission authorization",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the user" },
+        "email": { "type": "string", "description": "User email address" },
+        "username": { "type": "string", "description": "Callsign or handle" },
+        "fullName": { "type": "string", "description": "Full name of the astronaut" },
+        "adminGivenId": { "type": "string", "description": "NASA issued authorization badge ID" },
+        "role": { "type": "string", "enum": ["admin", "crew"], "description": "User portal role" },
+        "gender": { "type": "string", "description": "Gender specification" },
+        "age": { "type": "integer", "description": "Age in years" },
+        "assignedMission": { "type": "string", "description": "Current space mission destination" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Timestamp when profile was created via FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Timestamp of last update via FieldValue.serverTimestamp()" }
+      },
+      "required": ["userId", "email", "fullName", "adminGivenId", "role", "createdAt"]
+    },
+    "Telemetry": {
+      "title": "Telemetry",
+      "description": "Continuous biometric and environmental telemetry snapshot",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "UID of the astronaut" },
+        "heartRate": { "type": "integer", "description": "Pulse in BPM" },
+        "bloodPressureSys": { "type": "integer", "description": "Systolic mmHg" },
+        "bloodPressureDia": { "type": "integer", "description": "Diastolic mmHg" },
+        "radiationCumulativeMsv": { "type": "number", "description": "Cumulative mission radiation in mSv" },
+        "radiationRateMsvH": { "type": "number", "description": "Current hourly radiation in mSv/h" },
+        "sleepHours": { "type": "number", "description": "Sleep hours in previous 24h" },
+        "fatigueRiskScore": { "type": "number", "description": "0-100 composite fatigue score" },
+        "riskLevel": { "type": "string", "description": "Overall risk level (Low, Moderate, High, Critical)" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Record timestamp via FieldValue.serverTimestamp()" }
+      },
+      "required": ["userId", "heartRate", "radiationCumulativeMsv", "timestamp"]
+    },
+    "CrewMessage": {
+      "title": "CrewMessage",
+      "description": "Inter-crew and flight surgeon encrypted tactical messages",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Message unique identifier" },
+        "senderId": { "type": "string", "description": "UID of sender" },
+        "senderName": { "type": "string", "description": "Name or callsign of sender" },
+        "recipientId": { "type": "string", "description": "UID of recipient or 'ALL_CREW'" },
+        "message": { "type": "string", "description": "Encrypted message text" },
+        "priority": { "type": "string", "description": "Priority tier (Normal, High, Urgent, Emergency)" },
+        "timestamp": { "type": "string", "format": "date-time", "description": "Dispatch timestamp via FieldValue.serverTimestamp()" }
+      },
+      "required": ["id", "senderId", "recipientId", "message", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Astronaut and Admin profile data"
+    },
+    "/users/{userId}/telemetry/{telemetryId}": {
+      "schema": "Telemetry",
+      "description": "Personal biometric telemetry log stream"
+    },
+    "/messages/{messageId}": {
+      "schema": "CrewMessage",
+      "description": "Mission fleet communications and broadcast alerts"
+    }
+  }
+}

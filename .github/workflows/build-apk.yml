@@ -1,0 +1,121 @@
+name: Build Debug APK
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Set up Android SDK & Accept Licenses
+        run: |
+          mkdir -p "$HOME/.android"
+          touch "$HOME/.android/repositories.cfg"
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "android.builder.sdkDownload=true" >> gradle.properties
+          touch .env
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ -x "$SDKMANAGER" ]; then
+            yes | "$SDKMANAGER" --licenses || true
+            "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
+          elif command -v sdkmanager >/dev/null 2>&1; then
+            yes | sdkmanager --licenses || true
+            sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools" || true
+          fi
+
+      - name: Provide google-services.json fallback if missing
+        run: |
+          if [ ! -f "app/google-services.json" ]; then
+            echo '{"project_info":{"project_number":"0","project_id":"astrasense-app","storage_bucket":"astrasense-app.appspot.com"},"client":[{"client_info":{"mobilesdk_app_id":"1:0:android:0","android_client_info":{"package_name":"com.aistudio.astrasense.kxzmq"}},"oauth_client":[],"api_key":[{"current_key":""}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}]}' > app/google-services.json
+          fi
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Create temporary debug keystore
+        run: |
+          if [ -f "./debug.keystore" ]; then
+            echo "debug.keystore already exists."
+          elif [ -f "./debug.keystore.base64" ]; then
+            base64 -d ./debug.keystore.base64 > ./debug.keystore
+          else
+            keytool -genkey -v -keystore ./debug.keystore -alias androiddebugkey -storepass android -keypass android -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
+          fi
+
+      - name: Build the debug APK
+        id: assemble_apk
+        continue-on-error: true
+        run: |
+          gradle :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee build.log
+
+      - name: Inspect build failure if error occurred
+        if: always()
+        run: |
+          if [ ! -f "app/build/outputs/apk/debug/app-debug.apk" ] && [ ! -f "app/build/outputs/apk/debug/AstraSense.apk" ]; then
+            echo "## ❌ Gradle Build Error Log" >> "$GITHUB_STEP_SUMMARY"
+            echo '```text' >> "$GITHUB_STEP_SUMMARY"
+            tail -n 60 build.log >> "$GITHUB_STEP_SUMMARY" || true
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+      - name: Verify the APK
+        run: |
+          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ] && [ ! -f "app/build/outputs/apk/debug/AstraSense.apk" ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/AstraSense.apk
+          fi
+          if [ ! -s "app/build/outputs/apk/debug/AstraSense.apk" ]; then
+            echo "Error: AstraSense.apk was not generated" >&2
+            exit 1
+          fi
+          echo "APK verified successfully"
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: AstraSense-apk
+          path: app/build/outputs/apk/debug/AstraSense.apk
+          if-no-files-found: error
+
+      - name: Prepare APK release asset
+        id: prepare_asset
+        run: |
+          mkdir -p release_dist
+          cp app/build/outputs/apk/debug/AstraSense.apk release_dist/AstraSense.apk
+          echo "release_asset=$PWD/release_dist/AstraSense.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Publish APK to GitHub Releases
+        id: publish_release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ASSET_PATH="${{ steps.prepare_asset.outputs.release_asset }}"
+          RELEASE_TAG="v1.0-${{ github.run_number }}-${{ github.run_attempt }}"
+          RELEASE_TITLE="AstraSense Debug APK #${{ github.run_number }}"
+          gh release create "$RELEASE_TAG" "$ASSET_PATH" --target "${{ github.sha }}" --title "$RELEASE_TITLE" --notes "AstraSense Debug APK build #${{ github.run_number }}" --latest
+
+      - name: Report download link
+        if: always()
+        run: |
+          echo "## 🚀 Direct APK Download" >> "$GITHUB_STEP_SUMMARY"
+          echo "[Download AstraSense.apk](https://github.com/${{ github.repository }}/releases/latest/download/AstraSense.apk)" >> "$GITHUB_STEP_SUMMARY"

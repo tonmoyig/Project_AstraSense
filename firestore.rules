@@ -1,0 +1,62 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'email', 'fullName', 'adminGivenId', 'role', 'createdAt']) &&
+        data.userId is string && data.userId == request.auth.uid &&
+        data.email is string && data.email.size() > 3 &&
+        data.fullName is string && data.fullName.size() > 0 &&
+        data.adminGivenId is string && data.adminGivenId.size() > 0 &&
+        data.role in ['admin', 'crew'] &&
+        data.createdAt is timestamp && data.createdAt <= request.time &&
+        (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidTelemetry(data, userId) {
+      return data.keys().hasAll(['userId', 'heartRate', 'radiationCumulativeMsv', 'timestamp']) &&
+        data.userId == userId &&
+        data.heartRate is int && data.heartRate >= 30 && data.heartRate <= 250 &&
+        (data.radiationCumulativeMsv is number || data.radiationCumulativeMsv is int) &&
+        data.timestamp is timestamp && data.timestamp <= request.time;
+    }
+
+    function isValidCrewMessage(data) {
+      return data.keys().hasAll(['id', 'senderId', 'recipientId', 'message', 'timestamp']) &&
+        data.id is string && data.id.size() > 0 &&
+        data.senderId == request.auth.uid &&
+        data.recipientId is string && data.recipientId.size() > 0 &&
+        data.message is string && data.message.size() > 0 && data.message.size() <= 4000 &&
+        data.timestamp is timestamp && data.timestamp <= request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if isOwner(userId) && isValidUser(request.resource.data);
+      allow delete: if false;
+
+      match /telemetry/{telemetryId} {
+        allow read: if isAuthenticated();
+        allow create: if isOwner(userId) && isValidTelemetry(request.resource.data, userId);
+        allow update: if isOwner(userId) && isValidTelemetry(request.resource.data, userId);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidCrewMessage(request.resource.data);
+      allow update: if false;
+      allow delete: if isAuthenticated() && resource.data.senderId == request.auth.uid;
+    }
+  }
+}

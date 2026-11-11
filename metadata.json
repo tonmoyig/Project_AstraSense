@@ -1,0 +1,6 @@
+{
+  "name": "AstraSense",
+  "description": "Onboard AI health and biometrics monitoring suite for deep-space astronaut missions, featuring multi-layer emergency detection, behavioral and physical performance tracking, and medical officer tele-assistance.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
